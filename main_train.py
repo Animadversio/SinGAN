@@ -25,6 +25,6 @@ if __name__ == '__main__':
         except OSError:
             pass
         real = functions.read_image(opt)
-        functions.adjust_scales2image(real, opt)
+        functions.adjust_scales2image(real, opt) # adjust the pyramid parameters according to real image scale
         train(opt, Gs, Zs, reals, NoiseAmp)
         SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt)

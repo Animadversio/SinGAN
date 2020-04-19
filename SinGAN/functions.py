@@ -294,7 +294,7 @@ def post_config(opt):
     opt.noise_amp_init = opt.noise_amp
     opt.nfc_init = opt.nfc
     opt.min_nfc_init = opt.min_nfc
-    opt.scale_factor_init = opt.scale_factor
+    opt.scale_factor_init = opt.scale_factor # it will be adjusted according to image size
     opt.out_ = 'TrainedModels/%s/scale_factor=%f/' % (opt.input_name[:-4], opt.scale_factor)
     if opt.mode == 'SR':
         opt.alpha = 100

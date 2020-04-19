@@ -33,7 +33,7 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         try:
             os.makedirs(opt.outf)
         except OSError:
-                pass
+            pass
 
         #plt.imsave('%s/in.png' %  (opt.out_), functions.convert_image_np(real), vmin=0, vmax=1)
         #plt.imsave('%s/original.png' %  (opt.out_), functions.convert_image_np(real_), vmin=0, vmax=1)
@@ -53,7 +53,7 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 
         Gs.append(G_curr)
         Zs.append(z_curr)
-        NoiseAmp.append(opt.noise_amp)
+        NoiseAmp.append(opt.noise_amp) # Noise Amplitude is changed inside?
 
         torch.save(Zs, '%s/Zs.pth' % (opt.out_))
         torch.save(Gs, '%s/Gs.pth' % (opt.out_))
@@ -68,7 +68,7 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 
 
 def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
-
+    """This is the core to understand it all. """
     real = reals[len(Gs)]
     opt.nzx = real.shape[2]#+(opt.ker_size-1)*(opt.num_layer)
     opt.nzy = real.shape[3]#+(opt.ker_size-1)*(opt.num_layer)
@@ -84,7 +84,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
     alpha = opt.alpha
 
-    fixed_noise = functions.generate_noise([opt.nc_z,opt.nzx,opt.nzy])
+    fixed_noise = functions.generate_noise([opt.nc_z,opt.nzx,opt.nzy]) # select a fixed noise at start
     z_opt = torch.full(fixed_noise.shape, 0, device=opt.device)
     z_opt = m_noise(z_opt)
 
