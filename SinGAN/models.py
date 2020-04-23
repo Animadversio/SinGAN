@@ -14,12 +14,13 @@ class ConvBlock(nn.Sequential):
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('conv') != -1:
-        m.weight.data.normal_(0.0, 0.02)
+        m.weight.data.normal_(0.0, 0.02)  # actually they didn't use those fancy initialization tech
     elif classname.find('norm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
    
 class WDiscriminator(nn.Module):
+    """A fully convolutional Discriminator is effectively apply dis to overlapping patches and collect results."""
     def __init__(self, opt):
         super(WDiscriminator, self).__init__()
         self.is_cuda = torch.cuda.is_available()
@@ -55,9 +56,10 @@ class GeneratorConcatSkip2CleanAdd(nn.Module):
             nn.Tanh()
         )
     def forward(self,x,y):
+        # x is the noise and y is the upsampled previous layer output, so the network use x to pred the residue of y
         x = self.head(x)
         x = self.body(x)
         x = self.tail(x)
-        ind = int((y.shape[2]-x.shape[2])/2)
+        ind = int((y.shape[2]-x.shape[2])/2)  # crop spatial dimension to retain the same size.
         y = y[:,:,ind:(y.shape[2]-ind),ind:(y.shape[3]-ind)]
         return x+y

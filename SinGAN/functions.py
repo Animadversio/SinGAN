@@ -136,30 +136,30 @@ def move_to_cpu(t):
 
 def calc_gradient_penalty(netD, real_data, fake_data, LAMBDA):
     #print real_data.size()
-    alpha = torch.rand(1, 1)
+    alpha = torch.rand(1, 1)  # [0, 1) uniform RV
     alpha = alpha.expand(real_data.size())
     alpha = alpha.cuda() #gpu) #if use_cuda else alpha
 
-    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+    interpolates = alpha * real_data + ((1 - alpha) * fake_data)  # do a per pixel linear interpolation between real and fake image data
 
 
     interpolates = interpolates.cuda()
     interpolates = torch.autograd.Variable(interpolates, requires_grad=True)
 
-    disc_interpolates = netD(interpolates)
+    disc_interpolates = netD(interpolates) # let current disc network see interpol
 
     gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolates,
                               grad_outputs=torch.ones(disc_interpolates.size()).cuda(), #if use_cuda else torch.ones(
                                   #disc_interpolates.size()),
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+                              create_graph=True, retain_graph=True, only_inputs=True)[0] # Q: shape of grad?
     #LAMBDA = 1
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA  # gradient L2 norm along channel dim should be 1
     return gradient_penalty
 
 def read_image(opt):
     x = img.imread('%s/%s' % (opt.input_dir,opt.input_name))
-    x = np2torch(x,opt)
-    x = x[:,0:3,:,:]
+    x = np2torch(x,opt) # will move to gpu if cuda specified.
+    x = x[:,0:3,:,:] # only use 3 channel even more is given.
     return x
 
 def read_image_dir(dir,opt):
@@ -201,16 +201,17 @@ def save_networks(netG,netD,z,opt):
     torch.save(z, '%s/z_opt.pth' % (opt.outf))
 
 def adjust_scales2image(real_,opt):
+    """Calculate how many scale are there and adjust """
     opt.num_scales = int((math.log(math.pow(opt.min_size / (real_.shape[2]), 1), opt.scale_factor_init))) + 1
     scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
-    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]),1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)
-    real = imresize(real_, opt.scale1, opt)
+    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]),1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)  # shrink the image, if the large side of the image is larger than max_size(256)
+    real = imresize(real_, opt.scale1, opt) # resize the image to fit as well
     opt.scale_factor = math.pow(opt.min_size / (real.shape[2]), 1 / (opt.stop_scale))
     # opt.scale_factor = math.pow(opt.min_size/(min(real_.shape[0],real_.shape[1])),1/(opt.stop_scale))
     scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
-    return real
+    return real  # nobody receive this value.
 
 def adjust_scales2image_SR(real_,opt):
     #'''
@@ -297,7 +298,7 @@ def post_config(opt):
     opt.scale_factor_init = opt.scale_factor # it will be adjusted according to image size
     opt.out_ = 'TrainedModels/%s/scale_factor=%f/' % (opt.input_name[:-4], opt.scale_factor)
     if opt.mode == 'SR':
-        opt.alpha = 100
+        opt.alpha = 100  # emphasize reconstruction more than adversarial
 
     if opt.manualSeed is None:
         opt.manualSeed = random.randint(1, 10000)
