@@ -134,22 +134,22 @@ def move_to_cpu(t):
     t = t.to(torch.device('cpu'))
     return t
 
-def calc_gradient_penalty(netD, real_data, fake_data, LAMBDA):
+def calc_gradient_penalty(netD, real_data, fake_data, LAMBDA, device):
     #print real_data.size()
     alpha = torch.rand(1, 1)  # [0, 1) uniform RV
     alpha = alpha.expand(real_data.size())
-    alpha = alpha.cuda() #gpu) #if use_cuda else alpha
+    alpha = alpha.to(device)#cuda() #gpu) #if use_cuda else alpha
 
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)  # do a per pixel linear interpolation between real and fake image data
 
 
-    interpolates = interpolates.cuda()
+    interpolates = interpolates.to(device)#.cuda()
     interpolates = torch.autograd.Variable(interpolates, requires_grad=True)
 
     disc_interpolates = netD(interpolates) # let current disc network see interpol
 
     gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              grad_outputs=torch.ones(disc_interpolates.size()).cuda(), #if use_cuda else torch.ones(
+                              grad_outputs=torch.ones(disc_interpolates.size()).to(device),#.cuda(), #if use_cuda else torch.ones(
                                   #disc_interpolates.size()),
                               create_graph=True, retain_graph=True, only_inputs=True)[0] # Q: shape of grad?
     #LAMBDA = 1
@@ -177,8 +177,10 @@ def np2torch(x,opt):
         x = x[:,:,None,None]
         x = x.transpose(3, 2, 0, 1)
     x = torch.from_numpy(x)
-    x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor)
+    if not(opt.not_cuda):
+        x = move_to_gpu(x)
+    x = x.type(torch.cuda.FloatTensor) if not(opt.not_cuda) else x.type(torch.FloatTensor)
+    #x = x.type(torch.FloatTensor)
     x = norm(x)
     return x
 
@@ -201,29 +203,28 @@ def save_networks(netG,netD,z,opt):
     torch.save(z, '%s/z_opt.pth' % (opt.outf))
 
 def adjust_scales2image(real_,opt):
-    """Calculate how many scale are there and adjust """
-    opt.num_scales = int((math.log(math.pow(opt.min_size / (real_.shape[2]), 1), opt.scale_factor_init))) + 1
-    scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
+    #opt.num_scales = int((math.log(math.pow(opt.min_size / (real_.shape[2]), 1), opt.scale_factor_init))) + 1
+    opt.num_scales = math.ceil((math.log(math.pow(opt.min_size / (min(real_.shape[2], real_.shape[3])), 1), opt.scale_factor_init))) + 1
+    scale2stop = math.ceil(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
-    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]),1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)  # shrink the image, if the large side of the image is larger than max_size(256)
-    real = imresize(real_, opt.scale1, opt) # resize the image to fit as well
-    opt.scale_factor = math.pow(opt.min_size / (real.shape[2]), 1 / (opt.stop_scale))
-    # opt.scale_factor = math.pow(opt.min_size/(min(real_.shape[0],real_.shape[1])),1/(opt.stop_scale))
-    scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
+    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]),1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)
+    real = imresize(real_, opt.scale1, opt)
+    #opt.scale_factor = math.pow(opt.min_size / (real.shape[2]), 1 / (opt.stop_scale))
+    opt.scale_factor = math.pow(opt.min_size/(min(real.shape[2],real.shape[3])),1/(opt.stop_scale))
+    scale2stop = math.ceil(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
     return real  # nobody receive this value.
 
 def adjust_scales2image_SR(real_,opt):
-    #'''
     opt.min_size = 18
-    opt.num_scales = int((math.log(math.pow(opt.min_size / (min([real_.shape[2],real_.shape[3]])), 1), opt.scale_factor_init))) + 1
-    scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
+    opt.num_scales = int((math.log(opt.min_size / min(real_.shape[2], real_.shape[3]), opt.scale_factor_init))) + 1
+    scale2stop = int(math.log(min(opt.max_size , max(real_.shape[2], real_.shape[3])) / max(real_.shape[0], real_.shape[3]), opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
-    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]),1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)
+    opt.scale1 = min(opt.max_size / max([real_.shape[2], real_.shape[3]]), 1)  # min(250/max([real_.shape[0],real_.shape[1]]),1)
     real = imresize(real_, opt.scale1, opt)
-    opt.scale_factor = math.pow(opt.min_size / (min([real_.shape[2],real_.shape[3]])), 1 / (opt.stop_scale))
-    # opt.scale_factor = math.pow(opt.min_size/(min(real_.shape[0],real_.shape[1])),1/(opt.stop_scale))
-    scale2stop = int(math.log(min([opt.max_size, max([real_.shape[2], real_.shape[3]])]) / max([real_.shape[2], real_.shape[3]]),opt.scale_factor_init))
+    #opt.scale_factor = math.pow(opt.min_size / (real.shape[2]), 1 / (opt.stop_scale))
+    opt.scale_factor = math.pow(opt.min_size/(min(real.shape[2],real.shape[3])),1/(opt.stop_scale))
+    scale2stop = int(math.log(min(opt.max_size, max(real_.shape[2], real_.shape[3])) / max(real_.shape[0], real_.shape[3]), opt.scale_factor_init))
     opt.stop_scale = opt.num_scales - scale2stop
     return real
 
@@ -290,7 +291,7 @@ def generate_dir2save(opt):
 
 def post_config(opt):
     # init fixed parameters
-    opt.device = torch.device("cuda:0" if opt.cuda else "cpu")
+    opt.device = torch.device("cpu" if opt.not_cuda else "cuda:0")
     opt.niter_init = opt.niter
     opt.noise_amp_init = opt.noise_amp
     opt.nfc_init = opt.nfc
@@ -305,7 +306,7 @@ def post_config(opt):
     print("Random Seed: ", opt.manualSeed)
     random.seed(opt.manualSeed)
     torch.manual_seed(opt.manualSeed)
-    if torch.cuda.is_available() and not opt.cuda:
+    if torch.cuda.is_available() and opt.not_cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     return opt
 
@@ -315,7 +316,7 @@ def calc_init_scale(opt):
     in_scale = pow(opt.sr_factor, 1 / iter_num)
     return in_scale,iter_num
 
-def quant(prev):
+def quant(prev,device):
     arr = prev.reshape((-1, 3)).cpu()
     kmeans = KMeans(n_clusters=5, random_state=0).fit(arr)
     labels = kmeans.labels_
@@ -323,7 +324,8 @@ def quant(prev):
     x = centers[labels]
     x = torch.from_numpy(x)
     x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor)
+    x = x.type(torch.cuda.FloatTensor) if () else x.type(torch.FloatTensor)
+    #x = x.type(torch.FloatTensor.to(device))
     x = x.view(prev.shape)
     return x,centers
 
@@ -335,7 +337,8 @@ def quant2centers(paint, centers):
     x = centers[labels]
     x = torch.from_numpy(x)
     x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor)
+    x = x.type(torch.cuda.FloatTensor) if torch.cuda.is_available() else x.type(torch.FloatTensor)
+    #x = x.type(torch.cuda.FloatTensor)
     x = x.view(paint.shape)
     return x
 

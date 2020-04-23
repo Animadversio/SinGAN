@@ -23,11 +23,6 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
             if (scale_num > 0) & (scale_num % 4==0): # every 4 scales half the iteration number! (train less for the finer details. )
                 opt.niter = opt.niter//2
 
-        '''
-        if (scale_num == opt.stop_scale):
-            opt.nfc = 128
-            opt.min_nfc = 128
-        '''
         opt.out_ = functions.generate_dir2save(opt)
         opt.outf = '%s/%d' % (opt.out_,scale_num)
         try:
@@ -101,15 +96,13 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
     z_opt2plot = []  # collect reconstruction error
 
     for epoch in range(opt.niter):
-        schedulerD.step()
-        schedulerG.step()
-        if (Gs == []) & (opt.mode != 'SR_train'):  # if it's the first scale.
-            z_opt = functions.generate_noise([1,opt.nzx,opt.nzy])  # this is chosen start of each epoch
-            z_opt = m_noise(z_opt.expand(1,3,opt.nzx,opt.nzy))
-            noise_ = functions.generate_noise([1,opt.nzx,opt.nzy])
-            noise_ = m_noise(noise_.expand(1,3,opt.nzx,opt.nzy))  # expand is like repeat, it copy data along channel axis. So noise in RGB channels share the same val
+        if (Gs == []) & (opt.mode != 'SR_train'): # if it's the first scale.
+            z_opt = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
+            z_opt = m_noise(z_opt.expand(1,3,opt.nzx,opt.nzy)) # this is chosen start of each epoch
+            noise_ = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
+            noise_ = m_noise(noise_.expand(1,3,opt.nzx,opt.nzy)) # expand is like repeat, it copy data along channel axis. So noise in RGB channels share the same val
         else:
-            noise_ = functions.generate_noise([opt.nc_z,opt.nzx,opt.nzy])
+            noise_ = functions.generate_noise([opt.nc_z,opt.nzx,opt.nzy], device=opt.device)
             noise_ = m_noise(noise_)
 
         ############################
@@ -168,7 +161,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             errD_fake.backward(retain_graph=True)
             D_G_z = output.mean().item()
 
-            gradient_penalty = functions.calc_gradient_penalty(netD, real, fake, opt.lambda_grad) # some reg...?
+            gradient_penalty = functions.calc_gradient_penalty(netD, real, fake, opt.lambda_grad, opt.device)
             gradient_penalty.backward()
 
             errD = errD_real + errD_fake + gradient_penalty
@@ -231,6 +224,10 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             plt.savefig('%s/loss_trace.png' % (opt.outf))
             plt.close()
             torch.save(z_opt, '%s/z_opt.pth' % (opt.outf))
+
+        schedulerD.step()
+        schedulerG.step()
+
     functions.save_networks(netG,netD,z_opt,opt)
     return z_opt,in_s,netG    
 
@@ -244,10 +241,10 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 pad_noise = 0
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
                 if count == 0:
-                    z = functions.generate_noise([1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
+                    z = functions.generate_noise([1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
                     z = z.expand(1, 3, z.shape[2], z.shape[3])
                 else:
-                    z = functions.generate_noise([opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
+                    z = functions.generate_noise([opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
                 z = m_noise(z)
                 G_z = G_z[:,:,0:real_curr.shape[2],0:real_curr.shape[3]]
                 G_z = m_image(G_z)

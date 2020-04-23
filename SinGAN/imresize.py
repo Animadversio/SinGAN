@@ -1,5 +1,8 @@
+# This code was taken from: https://github.com/assafshocher/resizer by Assaf Shocher
+
 import numpy as np
 from scipy.ndimage import filters, measurements, interpolation
+from skimage import color
 from math import pi
 #from SinGAN.functions import torch2uint8, np2torch
 import torch
@@ -27,8 +30,10 @@ def np2torch(x,opt):
         x = x[:,:,None,None]
         x = x.transpose(3, 2, 0, 1)
     x = torch.from_numpy(x)
-    x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor)
+    if not (opt.not_cuda):
+        x = move_to_gpu(x)
+    x = x.type(torch.cuda.FloatTensor) if not(opt.not_cuda) else x.type(torch.FloatTensor)
+    #x = x.type(torch.cuda.FloatTensor)
     x = norm(x)
     return x
 
