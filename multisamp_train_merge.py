@@ -15,8 +15,8 @@ except:
     from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
 import json
+from os.path import join
 # Simulate getting option configuration
-import argparse
 from config import get_arguments
 parser = get_arguments()
 opt = parser.parse_args(["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256'])  # argparse.Namespace(device="")
@@ -94,7 +94,7 @@ def chan_fun(lvl, opt):
         return 32
 reconloss = nn.MSELoss()
 for lvl in range(opt.stop_scale + 1):
-    outpath = r"%s\%d" % (opt.out_, lvl)
+    outpath = join(opt.out_, "%d" % (lvl ))
     opt.outf = outpath
     os.makedirs(outpath, exist_ok=True)
     # Preset training constants for this level
