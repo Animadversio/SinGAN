@@ -19,7 +19,7 @@ from os.path import join
 # Simulate getting option configuration
 from config import get_arguments
 parser = get_arguments()
-opt = parser.parse_args(["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256'])  # argparse.Namespace(device="")
+opt = parser.parse_args()  # ["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256']
 #%%
 opt.input_name = "mountain_peak2.jpg"
 opt.mode = "train"
