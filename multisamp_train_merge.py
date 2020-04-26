@@ -19,9 +19,10 @@ from os.path import join
 # Simulate getting option configuration
 from config import get_arguments
 parser = get_arguments()
+parser.add_argument('--input_name', help='input image name', default="mounts.jpg")
 opt = parser.parse_args()  # ["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256']
 #%%
-opt.input_name = "mountain_peak2.jpg"
+# opt.input_name = "mounts.jpg"
 opt.mode = "train"
 opt = post_config(opt)
 # , "--input_name", "face_182200.jpg",
@@ -78,8 +79,9 @@ opt.alpha = 10
 opt.Dsteps = 3
 opt.Gsteps = 3
 opt.niter = 2001
-logdir = "Log/mounts_merge32"
-opt.out_ = r"TrainedModels/mounts"
+# logdir = "Log/mounts_merge32"
+opt.out_ = generate_dir2save(opt)  # r"TrainedModels/mounts"
+logdir = join("Log", *opt.out_.split('/')[1:])
 writer = SummaryWriter(log_dir=logdir, flush_secs=180)
 json.dump(opt.__repr__(), open(join(logdir, "opt.json"), "w"), sort_keys=True, indent=4)
 Gs = []; Zs = []; NoiseAmp = []
@@ -91,7 +93,7 @@ def chan_fun(lvl, opt):
     if lvl < len(chans):
         return chans[lvl]
     else:
-        return 32
+        return opt.nfc_init
 reconloss = nn.MSELoss()
 for lvl in range(opt.stop_scale + 1):
     outpath = join(opt.out_, "%d" % (lvl ))
