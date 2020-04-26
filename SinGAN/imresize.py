@@ -22,7 +22,9 @@ def move_to_gpu(t):
     return t
 
 def np2torch(x,opt):
-    if opt.nc_im == 3:
+    if len(x.shape) == 4:
+        x = x.transpose((3, 2, 0, 1)) / 255
+    elif opt.nc_im == 3:
         x = x[:,:,:,None]
         x = x.transpose((3, 2, 0, 1))/255
     else:
@@ -45,10 +47,20 @@ def torch2uint8(x):
     x = x.astype(np.uint8)
     return x
 
+def torch2uint8_batch(x):
+    x = x[:,:,:,:]
+    x = x.permute((2,3,1,0))
+    x = 255*denorm(x)
+    x = x.cpu().numpy()
+    x = x.astype(np.uint8)
+    return x
 
 def imresize(im,scale,opt):
     #s = im.shape
-    im = torch2uint8(im)
+    if im.shape[0] == 1:
+        im = torch2uint8(im)
+    else:
+        im = torch2uint8_batch(im)
     im = imresize_in(im, scale_factor=scale)
     im = np2torch(im,opt)
     #im = im[:, :, 0:int(scale * s[2]), 0:int(scale * s[3])]

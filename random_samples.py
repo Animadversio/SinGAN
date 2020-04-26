@@ -15,7 +15,7 @@ if __name__ == '__main__':
     # for random_samples_arbitrary_sizes:
     parser.add_argument('--scale_h', type=float, help='horizontal resize factor for random samples', default=1.5)
     parser.add_argument('--scale_v', type=float, help='vertical resize factor for random samples', default=1)
-    opt = parser.parse_args()
+    opt = parser.parse_args(['--mode', "random_samples", "--input_name", "face_000092.jpg", '--scale_h', "1", '--gen_start_scale', '1', '--scale_factor', '0.75'])
     opt = functions.post_config(opt)
     Gs = []
     Zs = []

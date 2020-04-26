@@ -32,7 +32,7 @@ class WDiscriminator(nn.Module):
             block = ConvBlock(max(2*N,opt.min_nfc),max(N,opt.min_nfc),opt.ker_size,opt.padd_size,1)
             self.body.add_module('block%d'%(i+1),block)
         self.tail = nn.Conv2d(max(N,opt.min_nfc),1,kernel_size=opt.ker_size,stride=1,padding=opt.padd_size)
-
+        # final layer of Discriminator is linear! This is the practise of WGAN.
     def forward(self,x):
         x = self.head(x)
         x = self.body(x)
@@ -53,7 +53,7 @@ class GeneratorConcatSkip2CleanAdd(nn.Module):
             self.body.add_module('block%d'%(i+1),block)
         self.tail = nn.Sequential(
             nn.Conv2d(max(N,opt.min_nfc),opt.nc_im,kernel_size=opt.ker_size,stride =1,padding=opt.padd_size),
-            nn.Tanh()
+            nn.Tanh()  # final layer of Generator is rectified to -1, 1
         )
     def forward(self,x,y):
         # x is the noise and y is the upsampled previous layer output, so the network use x to pred the residue of y

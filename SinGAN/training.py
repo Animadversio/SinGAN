@@ -41,12 +41,12 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 
         z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals,Gs,Zs,in_s,NoiseAmp,opt)  # real work
 
-        G_curr = functions.reset_grads(G_curr,False)  # net no longer requires gradient.
+        G_curr = functions.reset_grads(G_curr,False)  # Gnet no longer requires gradient. Thus weight is frozen!
         G_curr.eval()
-        D_curr = functions.reset_grads(D_curr,False)
+        D_curr = functions.reset_grads(D_curr,False)  # Note this D_curr is not the trained one...?
         D_curr.eval()
 
-        Gs.append(G_curr)  # train append after train G,D at each scale.
+        Gs.append(G_curr)  # train append after train G at each scale. Note this G is no longer trainable!
         Zs.append(z_curr)  # what is Zs? collection of z_opt towards current layer.
         NoiseAmp.append(opt.noise_amp)  # Noise Amplitude is changed inside?
 
@@ -70,7 +70,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
     opt.receptive_field = opt.ker_size + ((opt.ker_size-1)*(opt.num_layer-1))*opt.stride
     pad_noise = int(((opt.ker_size - 1) * opt.num_layer) / 2)
     pad_image = int(((opt.ker_size - 1) * opt.num_layer) / 2)
-    if opt.mode == 'animation_train':
+    if opt.mode == 'animation_train':  # Supplementary says they generate noise on the border in animation mode
         opt.nzx = real.shape[2]+(opt.ker_size-1)*(opt.num_layer)
         opt.nzy = real.shape[3]+(opt.ker_size-1)*(opt.num_layer)
         pad_noise = 0
@@ -99,9 +99,9 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
         if (Gs == []) & (opt.mode != 'SR_train'): # if it's the first scale.
             z_opt = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
             z_opt = m_noise(z_opt.expand(1,3,opt.nzx,opt.nzy)) # this is chosen start of each epoch
-            noise_ = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
+            noise_ = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)  # single channel noise
             noise_ = m_noise(noise_.expand(1,3,opt.nzx,opt.nzy)) # expand is like repeat, it copy data along channel axis. So noise in RGB channels share the same val
-        else:
+        else: # for each epocs only one noise_ is used! why?
             noise_ = functions.generate_noise([opt.nc_z,opt.nzx,opt.nzy], device=opt.device)
             noise_ = m_noise(noise_)
 
@@ -118,7 +118,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             errD_real.backward(retain_graph=True)
             D_x = -errD_real.item()  # D loss for the real image!
 
-            # train with fake
+            # train with fake, need to generate through the previous Generators
             if (j==0) & (epoch == 0):  # first Dstep in this level (epoch 0)
                 if (Gs == []) & (opt.mode != 'SR_train'):  # initial scale
                     prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
@@ -140,7 +140,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
                     z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
                     criterion = nn.MSELoss()
                     RMSE = torch.sqrt(criterion(real, z_prev))  # MSE between real and z_prev
-                    opt.noise_amp = opt.noise_amp_init*RMSE  # scale the noise amplitude
+                    opt.noise_amp = opt.noise_amp_init*RMSE  # learn the noise amplitude
                     z_prev = m_image(z_prev)
             else:
                 prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)  # process the in_s !
@@ -150,13 +150,13 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
                 prev = functions.quant2centers(prev,centers)
                 plt.imsave('%s/prev.png' % (opt.outf), functions.convert_image_np(prev), vmin=0, vmax=1)
 
-            if (Gs == []) & (opt.mode != 'SR_train'):  # 0 level
+            if (Gs == []) & (opt.mode != 'SR_train'):  # top level
                 noise = noise_  # now, full 0 tersor
-            else:
+            else:   # other level
                 noise = opt.noise_amp*noise_+prev  # now, full 0 tersor still
             # generate a single fake image through G and pass to D
             fake = netG(noise.detach(),prev)  # netG takes 2 inputs prev and noise, net process noise and + prev
-            output = netD(fake.detach())  # netD score the fake image
+            output = netD(fake.detach())  # netD score the fake image, note they detach here, so error not back prop to G
             errD_fake = output.mean()  # decrease the D output for fake.
             errD_fake.backward(retain_graph=True)
             D_G_z = output.mean().item()
@@ -175,7 +175,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
         for j in range(opt.Gsteps):  # then a few G steps
             netG.zero_grad()
-            output = netD(fake)
+            output = netD(fake)  # note here the same fake image is used multi times!???
             #D_fake_map = output.detach()
             errG = -output.mean()  # the D, adversarial loss part. here want to minimize adversarial loss. (Fake the img)
             errG.backward(retain_graph=True)  # Why? retain_graph
@@ -232,19 +232,20 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
     return z_opt,in_s,netG    
 
 def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
-    G_z = in_s
-    if len(Gs) > 0:  # skipped for the initial pyr level
-        if mode == 'rand':
+    """ Generate through all higher level Gs """
+    G_z = in_s  # G_z is the current image output
+    if len(Gs) > 0:  # skipped for the initial pyr level, since there is no previous G to generate
+        if mode == 'rand':  # using random noise map Z_opt
             count = 0
             pad_noise = int(((opt.ker_size-1)*opt.num_layer)/2)
             if opt.mode == 'animation_train':
                 pad_noise = 0
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
-                if count == 0:
+                if count == 0: # Z_opt is not really used, except its size.
                     z = functions.generate_noise([1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
-                    z = z.expand(1, 3, z.shape[2], z.shape[3])
+                    z = z.expand(1, 3, z.shape[2], z.shape[3])  # same value along color channel
                 else:
-                    z = functions.generate_noise([opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
+                    z = functions.generate_noise([opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)  # noise including color
                 z = m_noise(z)
                 G_z = G_z[:,:,0:real_curr.shape[2],0:real_curr.shape[3]]
                 G_z = m_image(G_z)
@@ -253,15 +254,15 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 G_z = imresize(G_z,1/opt.scale_factor,opt)
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
                 count += 1
-        if mode == 'rec':
+        if mode == 'rec':  # using reconstruction vectors Z_opt
             count = 0
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
-                G_z = G_z[:, :, 0:real_curr.shape[2], 0:real_curr.shape[3]]
+                G_z = G_z[:, :, 0:real_curr.shape[2], 0:real_curr.shape[3]] # make sure the size is the same as real pyr
                 G_z = m_image(G_z)
-                z_in = noise_amp*Z_opt+G_z
-                G_z = G(z_in.detach(),G_z)
+                z_in = noise_amp*Z_opt+G_z  # use the loaded noise amplitude
+                G_z = G(z_in.detach(),G_z)  # THis is the iteration equation for G_z
                 G_z = imresize(G_z,1/opt.scale_factor,opt)
-                G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
+                G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]] # make sure the size is the same as real pyr
                 #if count != (len(Gs)-1):
                 #    G_z = m_image(G_z)
                 count += 1
@@ -316,7 +317,7 @@ def train_paint(opt,Gs,Zs,reals,NoiseAmp,centers,paint_inject_scale):
     return
 
 
-def init_models(opt):
+def init_models(opt):  # opt.min_nfc is the main parameter that controls the width (filter number) for each layer
 
     #generator initialization:
     netG = models.GeneratorConcatSkip2CleanAdd(opt).to(opt.device)
