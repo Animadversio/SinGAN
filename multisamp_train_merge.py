@@ -9,7 +9,10 @@ from SinGAN.imresize import imresize
 from SinGAN.imresize import denorm,imresize_in,torch2uint8_batch
 import matplotlib.pylab as plt
 from os.path import join
-from torch.utils.tensorboard import SummaryWriter
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except:
+    from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
 import json
 # Simulate getting option configuration
