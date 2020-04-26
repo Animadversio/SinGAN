@@ -26,7 +26,7 @@ opt.mode = "train"
 opt = post_config(opt)
 # , "--input_name", "face_182200.jpg",
 #%%  load the multiple training samples, assume they can be fit into memory
-imgdir = "Input\\Images"
+imgdir = "Input/Images"
 imgnms = ["mountain_peak.jpg", "mountain_peak2.jpg"]
 outsize = (540, 960)
 imgs = []
@@ -78,8 +78,8 @@ opt.alpha = 10
 opt.Dsteps = 3
 opt.Gsteps = 3
 opt.niter = 2001
-logdir = "Log\\mounts_merge"
-opt.out_ = r"TrainedModels\mounts"
+logdir = "Log/mounts_merge32"
+opt.out_ = r"TrainedModels/mounts"
 writer = SummaryWriter(log_dir=logdir, flush_secs=180)
 json.dump(opt.__repr__(), open(join(logdir, "opt.json"), "w"), sort_keys=True, indent=4)
 Gs = []; Zs = []; NoiseAmp = []
@@ -87,11 +87,11 @@ nfc_prev = 0 # a memory variable
 #%%
 def chan_fun(lvl, opt):
     # return min(opt.min_nfc_init * pow(2, math.floor(lvl / 4)), 128)
-    chans = [48, 48, 48, 48, 48, 48, 48, 48, 48]
+    chans = [] # [48, 48, 48, 48, 48, 48, 48, 48, 48]
     if lvl < len(chans):
         return chans[lvl]
     else:
-        return 48
+        return 32
 reconloss = nn.MSELoss()
 for lvl in range(opt.stop_scale + 1):
     outpath = r"%s\%d" % (opt.out_, lvl)
