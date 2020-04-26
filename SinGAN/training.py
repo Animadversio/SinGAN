@@ -122,8 +122,8 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             if (j==0) & (epoch == 0):  # first Dstep in this level (epoch 0)
                 if (Gs == []) & (opt.mode != 'SR_train'):  # initial scale
                     prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
-                    in_s = prev
-                    prev = m_image(prev)
+                    in_s = prev # in_s doesn't get padded!
+                    prev = m_image(prev) # prev gets padded!
                     z_prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
                     z_prev = m_noise(z_prev)
                     opt.noise_amp = 1
@@ -203,8 +203,11 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             print('scale %d:[%d/%d]' % (len(Gs), epoch, opt.niter))
 
         if epoch % 500 == 0 or epoch == (opt.niter-1):
-            plt.imsave('%s/fake_sample.png' %  (opt.outf), functions.convert_image_np(fake.detach()), vmin=0, vmax=1)
+            plt.imsave('%s/fake_sample.png' % (opt.outf), functions.convert_image_np(fake.detach()), vmin=0, vmax=1)
             plt.imsave('%s/G(z_opt).png'    % (opt.outf),  functions.convert_image_np(netG(Z_opt.detach(), z_prev).detach()), vmin=0, vmax=1)
+            plt.imsave('%s/noise.png' % (opt.outf), functions.convert_image_np(noise), vmin=0, vmax=1)  # this is the noise that go into generator, so prev + amp * noise_
+            plt.imsave('%s/Z_opt.png' % (opt.outf), functions.convert_image_np(Z_opt), vmin=0, vmax=1)
+            plt.imsave('%s/z_prev.png' % (opt.outf), functions.convert_image_np(z_prev), vmin=0, vmax=1)
             #plt.imsave('%s/D_fake.png'   % (opt.outf), functions.convert_image_np(D_fake_map))
             #plt.imsave('%s/D_real.png'   % (opt.outf), functions.convert_image_np(D_real_map))
             #plt.imsave('%s/z_opt.png'    % (opt.outf), functions.convert_image_np(z_opt.detach()), vmin=0, vmax=1)
@@ -251,7 +254,7 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 G_z = m_image(G_z)
                 z_in = noise_amp*z+G_z
                 G_z = G(z_in.detach(),G_z)
-                G_z = imresize(G_z,1/opt.scale_factor,opt)
+                G_z = imresize(G_z,1/opt.scale_factor,opt)  # upsample it to current level
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
                 count += 1
         if mode == 'rec':  # using reconstruction vectors Z_opt
@@ -261,7 +264,7 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 G_z = m_image(G_z)
                 z_in = noise_amp*Z_opt+G_z  # use the loaded noise amplitude
                 G_z = G(z_in.detach(),G_z)  # THis is the iteration equation for G_z
-                G_z = imresize(G_z,1/opt.scale_factor,opt)
+                G_z = imresize(G_z,1/opt.scale_factor,opt) # upsample it to current level
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]] # make sure the size is the same as real pyr
                 #if count != (len(Gs)-1):
                 #    G_z = m_image(G_z)

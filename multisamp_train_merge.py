@@ -19,7 +19,7 @@ from os.path import join
 # Simulate getting option configuration
 from config import get_arguments
 parser = get_arguments()
-parser.add_argument('--input_name', help='input image name', default="mounts.jpg")
+parser.add_argument('--input_name', help='input image name', default="mounts_merge2.jpg")
 opt = parser.parse_args()  # ["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256']
 #%%
 # opt.input_name = "mounts.jpg"
@@ -45,6 +45,8 @@ for imgi in range(len(imgnms)):
         img = img[marg:marg + outsize[0], :, :]
 
     imgs.append(img.copy())
+#%%
+# imgs = [imread(join(imgdir, imgnms[0]))]
 # for img in imgs:
 #     plt.imshow(img / 255)
 #     plt.show()
@@ -64,13 +66,9 @@ reals_pyr = creat_reals_pyramid(real_batch, [], opt)
 im = torch2uint8_batch(real_batch)
 im = imresize_in(im, scale_factor=[0.5, 0.5])
 # im = np2torch(im,opt)
-for imgi in range(len(imgnms)):
+for imgi in range(im.shape[3]):
     plt.imshow(im[:,:,:,imgi]/255)
     plt.show()
-#%% Create the pyramid
-# real = imresize(real_,opt.scale1,opt)
-real_batch = adjust_scales2image(real_batch, opt)
-reals_pyr = creat_reals_pyramid(real_batch, [], opt)
 # Embed or Encode the images into hidden space.
 # Most simply, embed the images into random position (random noise vector)
 # advanced version, train an auto encoder! VAE-GAN
@@ -88,12 +86,12 @@ Gs = []; Zs = []; NoiseAmp = []
 nfc_prev = 0 # a memory variable
 #%%
 def chan_fun(lvl, opt):
-    # return min(opt.min_nfc_init * pow(2, math.floor(lvl / 4)), 128)
-    chans = [] # [48, 48, 48, 48, 48, 48, 48, 48, 48]
-    if lvl < len(chans):
-        return chans[lvl]
-    else:
-        return opt.nfc_init
+    return min(opt.nfc_init * pow(2, math.floor(lvl / 4)), 128)
+    # chans = [] # [48, 48, 48, 48, 48, 48, 48, 48, 48]
+    # if lvl < len(chans):
+    #     return chans[lvl]
+    # else:
+    #     return opt.nfc_init
 reconloss = nn.MSELoss()
 for lvl in range(opt.stop_scale + 1):
     outpath = join(opt.out_, "%d" % (lvl ))
@@ -131,18 +129,24 @@ for lvl in range(opt.stop_scale + 1):
     if lvl == 0:
         fixed_noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)
         z_prev = torch.full([real_num, opt.nc_z, opt.nzx, opt.nzy], 0, device=opt.device)
-        in_s = torch.full([real_num, opt.nc_z, opt.nzx, opt.nzy], 0, device=opt.device)
+        in_s = torch.full([real_num, opt.nc_z, opt.nzx, opt.nzy], 0, device=opt.device)  # this is set at first level, never change again
+        opt.noise_amp = 1
     else:
         fixed_noise_ = torch.full([real_num, opt.nc_z, opt.nzx, opt.nzy], 0, device=opt.device)
-        z_prev = draw_concat(Gs, Zs, reals_pyr, NoiseAmp, in_s, 'rec', m_noise, m_image, opt) # the reconstruction vection of prev
+        z_prev = draw_concat(Gs, Zs, reals_pyr, NoiseAmp, in_s, 'rec', m_noise, m_image, opt)  # the reconstruction vection of prev
         criterion = nn.MSELoss()
         RMSE = torch.sqrt(criterion(real, z_prev))  # MSE between real and z_prev
         opt.noise_amp = opt.noise_amp_init * RMSE  # learn the noise amplitude
+    z_prev = m_image(z_prev)
+    fixed_noise_ = m_noise(fixed_noise_)
 
     if (lvl > 0) & (lvl % 4 == 0):  # every 4 scales half the iteration number! (train less for the finer details. )
         opt.niter = opt.niter // 2
     # training iteration
     for step in range(opt.niter):
+        noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device,
+                                num_samp=real_num)  # can be more samples
+        noise_ = m_noise(noise_)
         # if lvl == 0:
         #     fixed_noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)
         # 1. Train the Discriminator to output right result
@@ -154,17 +158,19 @@ for lvl in range(opt.stop_scale + 1):
             errD_real = -output.mean()  # Invert the loss to maximize D output for patches in real img.
             errD_real.backward(retain_graph=True)
             #%%# Generate some syn images (number matched) and feed the discriminator
-            noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)
+            # noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)
             if lvl == 0:
                 prev = torch.full([real_num, opt.nc_z, opt.nzx, opt.nzy], 0, device=opt.device)
+                prev = m_image(prev)
                 noise = noise_
             else:
                 # prev = reals_pyr[lvl - 1]
                 # prev = imresize(prev, 1 / opt.scale_factor, opt)
                 # prev = prev[:, :, 0:opt.nzx, 0:opt.nzy]
                 prev = draw_concat(Gs, Zs, reals_pyr, NoiseAmp, in_s, 'rand', m_noise, m_image, opt)
+                prev = m_image(prev)
                 noise = opt.noise_amp * noise_ + prev
-            fakeout = netG(m_noise(noise), m_image(prev))
+            fakeout = netG(noise, prev)
             output = netD(fakeout.detach())  # desociate G from the graph, or G will be punished and generate crappy image.
             errD_fake = output.mean()  # decrease the D output for fake.
             errD_fake.backward(retain_graph=True)
@@ -181,15 +187,15 @@ for lvl in range(opt.stop_scale + 1):
         for j in range(opt.Gsteps):
             netG.zero_grad()
             ## 2.1 Generate synthsized samples
-            noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)  # can be more samples
+            # noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)  # can be more samples
             noise = opt.noise_amp * noise_ + prev
-            fakeout = netG(m_noise(noise), m_image(prev))
+            fakeout = netG(noise, prev)
             output = netD(fakeout)  # let error flow to G
             errG = - output.mean()  # increase the D output for fake. Cheat the D
             errG.backward(retain_graph=True)
             ## 2.2 Reconstruct real image from embeded fixed noise vectors
             reconnoise = opt.noise_amp * fixed_noise_ + z_prev
-            reconout = netG(m_noise(reconnoise), m_image(z_prev))
+            reconout = netG(reconnoise, z_prev)
             err_recon = opt.alpha * reconloss(reconout, real)
             err_recon.backward(retain_graph=True)
             ## back prop
@@ -216,6 +222,15 @@ for lvl in range(opt.stop_scale + 1):
             reconimgs = torch2uint8_batch(reconout.detach())
             for imgi in range(real_num):
                 imsave(join(outpath, "recon%d.jpg" % (imgi)), reconimgs[:, :, :, imgi])
+            z_previmgs = torch2uint8_batch(z_prev.detach())
+            for imgi in range(real_num):
+                imsave(join(outpath, "z_prev%d.jpg" % (imgi)), z_previmgs[:, :, :, imgi])
+            noiseimgs = torch2uint8_batch(noise.detach())
+            for imgi in range(real_num):
+                imsave(join(outpath, "noise%d.jpg" % (imgi)), noiseimgs[:, :, :, imgi])
+            fnoiseimgs = torch2uint8_batch(fixed_noise_.detach())
+            for imgi in range(real_num):
+                imsave(join(outpath, "fixnoise%d.jpg" % (imgi)), fnoiseimgs[:, :, :, imgi])
             torch.save(
                 {"errD": errD2plot, "errG": errG2plot, "D_real": D_real2plot, "D_fake": D_fake2plot, "recons": recon2plot, "grad_pen": grad_pen2plot}, join(outpath, 'loss_trace.pth'))
             figh = plt.figure()
@@ -239,7 +254,7 @@ for lvl in range(opt.stop_scale + 1):
             writer.add_image('noise_fixed', make_grid(denorm(fixed_noise_), nrow=2), global_step=step)
     # Record loss and visualize training progress.
     # wrap up this level, go to next.
-    z_curr = m_noise(fixed_noise_).detach()
+    z_curr = fixed_noise_.detach()
     save_networks(netG, netD, z_curr, opt)
 
     netD.eval().requires_grad_(False)
