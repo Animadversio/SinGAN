@@ -16,7 +16,7 @@ import json
 import argparse
 from config import get_arguments
 parser = get_arguments()
-opt = parser.parse_args(["--scale_factor", "0.75",'--min_size','25'])  # argparse.Namespace(device="")
+opt = parser.parse_args(["--scale_factor", "0.75", '--min_size', '25', '--max_size', '256'])  # argparse.Namespace(device="")
 #%%
 opt.input_name = "mountain_peak2.jpg"
 opt.mode = "train"
@@ -78,11 +78,7 @@ opt.niter = 2001
 logdir = "Log\\mounts_merge"
 opt.out_ = r"TrainedModels\mounts"
 writer = SummaryWriter(log_dir=logdir, flush_secs=180)
-json.dump(opt.__repr__(), open(join(logdir, "opt.json"),"w"), sort_keys=True, indent=4)
-reconloss = nn.MSELoss()
-# training iteration
-# for epoch in range(opt.niter):
-#% Preset training constants for this level
+json.dump(opt.__repr__(), open(join(logdir, "opt.json"), "w"), sort_keys=True, indent=4)
 Gs = []; Zs = []; NoiseAmp = []
 nfc_prev = 0 # a memory variable
 #%%
@@ -92,13 +88,13 @@ def chan_fun(lvl, opt):
     if lvl < len(chans):
         return chans[lvl]
     else:
-        return 32
-
-for lvl in range(4, 8):
+        return 48
+reconloss = nn.MSELoss()
+for lvl in range(opt.stop_scale + 1):
     outpath = r"%s\%d" % (opt.out_, lvl)
     opt.outf = outpath
     os.makedirs(outpath, exist_ok=True)
-
+    # Preset training constants for this level
     real = reals_pyr[lvl]
     opt.nzx = real.shape[2]#+(opt.ker_size-1)*(opt.num_layer)
     opt.nzy = real.shape[3]#+(opt.ker_size-1)*(opt.num_layer)
@@ -140,7 +136,7 @@ for lvl in range(4, 8):
 
     if (lvl > 0) & (lvl % 4 == 0):  # every 4 scales half the iteration number! (train less for the finer details. )
         opt.niter = opt.niter // 2
-
+    # training iteration
     for step in range(opt.niter):
         # if lvl == 0:
         #     fixed_noise_ = generate_noise([opt.nc_z, opt.nzx, opt.nzy], device=opt.device, num_samp=real_num)
@@ -236,8 +232,6 @@ for lvl in range(4, 8):
             writer.add_image('synth/reconstruct', make_grid(denorm(reconout), nrow=2), global_step=step)
             writer.add_image('noise', make_grid(denorm(noise), nrow=2), global_step=step)  # this is the noise that go into generator, so prev + amp * noise_
             writer.add_image('noise_fixed', make_grid(denorm(fixed_noise_), nrow=2), global_step=step)
-            # plt.imsave('%s/fake_sample.png' % (opt.outf), convert_image_np(fake.detach()))
-            # plt.imsave('%s/G(z_opt).png' % (opt.outf), convert_image_np(netG(Z_opt.detach(), z_prev).detach()))
     # Record loss and visualize training progress.
     # wrap up this level, go to next.
     z_curr = m_noise(fixed_noise_).detach()
